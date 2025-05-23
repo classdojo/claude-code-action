@@ -7,7 +7,7 @@ export async function prepareMcpConfig(
   branch: string,
 ): Promise<string> {
   console.log("Preparing MCP config ",{githubToken: !!githubToken, slackBotToken: !!process.env.SLACK_BOT_TOKEN});
-  
+
   try {
     const mcpConfig = {
       mcpServers: {
@@ -38,15 +38,16 @@ export async function prepareMcpConfig(
             BRANCH_NAME: branch,
           },
         },
-        ...(process.env.SLACK_BOT_TOKEN
+        ...(process.env.SLACK_BOT_TOKEN && process.env.SLACK_TEAM_ID
           ? {
               slack: {
                 command: "npx",
                 args: ["-y", "@modelcontextprotocol/server-slack"],
                 env: {
                   SLACK_BOT_TOKEN: process.env.SLACK_BOT_TOKEN,
+                  SLACK_TEAM_ID: process.env.SLACK_TEAM_ID,
                   SLACK_CHANNEL_IDS:
-                    process.env.SLACK_CHANNEL_IDS || "C08S795509L",
+                    process.env.SLACK_CHANNEL_IDS || ''
                 },
               },
             }
