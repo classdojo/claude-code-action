@@ -6,7 +6,10 @@ export async function prepareMcpConfig(
   repo: string,
   branch: string,
 ): Promise<string> {
-  console.log("Preparing MCP config ",{githubToken: !!githubToken, slackBotToken: !!process.env.SLACK_BOT_TOKEN});
+  console.log("Preparing MCP config ", {
+    githubToken: !!githubToken,
+    slackBotToken: !!process.env.SLACK_BOT_TOKEN,
+  });
 
   try {
     const mcpConfig = {
@@ -46,14 +49,12 @@ export async function prepareMcpConfig(
                 env: {
                   SLACK_BOT_TOKEN: process.env.SLACK_BOT_TOKEN,
                   SLACK_TEAM_ID: process.env.SLACK_TEAM_ID,
-                  SLACK_CHANNEL_IDS:
-                    process.env.SLACK_CHANNEL_IDS || ''
+                  SLACK_CHANNEL_IDS: process.env.SLACK_CHANNEL_IDS || "",
                 },
               },
             }
           : {}),
       },
-      
     };
 
     return JSON.stringify(mcpConfig, null, 2);
