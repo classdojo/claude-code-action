@@ -45,6 +45,13 @@ inputs:
     description: "Custom environment variables to pass to Claude Code execution (YAML format)"
     required: false
     default: ""
+  output_mode:
+    description: "Where to post the review. Comma-separated list. Options: pr_comment, commit_comment, stdout"
+    required: false
+    default: "pr_comment"
+  commit_sha:
+    description: "Specific commit SHA to comment on for commit_comment mode. Defaults to PR HEAD or github.sha"
+    required: false
 
   # Auth configuration
   anthropic_api_key:
@@ -106,6 +113,8 @@ runs:
         MCP_CONFIG: ${{ inputs.mcp_config }}
         OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token }}
         GITHUB_RUN_ID: ${{ github.run_id }}
+        OUTPUT_MODE: ${{ inputs.output_mode }}
+        COMMIT_SHA: ${{ inputs.commit_sha }}
 
     - name: Run Claude Code
       id: claude-code
@@ -158,6 +167,7 @@ runs:
         REPOSITORY: ${{ github.repository }}
         PR_NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
         CLAUDE_COMMENT_ID: ${{ steps.prepare.outputs.claude_comment_id }}
+        OUTPUT_IDENTIFIERS: ${{ steps.prepare.outputs.output_identifiers }}
         GITHUB_RUN_ID: ${{ github.run_id }}
         GITHUB_TOKEN: ${{ steps.prepare.outputs.GITHUB_TOKEN }}
         GITHUB_EVENT_NAME: ${{ github.event_name }}
@@ -170,6 +180,8 @@ runs:
         TRIGGER_USERNAME: ${{ github.event.comment.user.login || github.event.issue.user.login || github.event.pull_request.user.login || github.event.sender.login || github.triggering_actor || github.actor || '' }}
         PREPARE_SUCCESS: ${{ steps.prepare.outcome == 'success' }}
         PREPARE_ERROR: ${{ steps.prepare.outputs.prepare_error || '' }}
+        OUTPUT_MODE: ${{ inputs.output_mode }}
+        COMMIT_SHA: ${{ inputs.commit_sha }}
 
     - name: Display Claude Code Report
       if: steps.prepare.outputs.contains_trigger == 'true' && steps.claude-code.outputs.execution_file != ''
