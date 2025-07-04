@@ -10,9 +10,9 @@ import { setupGitHubToken } from "../github/token";
 import { checkTriggerAction } from "../github/validation/trigger";
 import { checkHumanActor } from "../github/validation/actor";
 import { checkWritePermissions } from "../github/validation/permissions";
-import { createInitialComment } from "../github/operations/comments/create-initial";
 import { setupBranch } from "../github/operations/branch";
 import { updateTrackingComment } from "../github/operations/comments/update-with-branch";
+import { OutputManager } from "../output-manager";
 import { prepareMcpConfig } from "../mcp/install-mcp-server";
 import { createPrompt } from "../create-prompt";
 import { createOctokit } from "../github/api/client";
@@ -50,8 +50,31 @@ async function run() {
     // Step 5: Check if actor is human
     await checkHumanActor(octokit.rest, context);
 
-    // Step 6: Create initial tracking comment
-    const commentId = await createInitialComment(octokit.rest, context);
+    // Step 6: Setup output manager and create initial tracking
+    const outputModes = OutputManager.parseOutputModes(
+      process.env.OUTPUT_MODE || "pr_comment",
+    );
+    const commitSha = process.env.COMMIT_SHA;
+    const outputManager = new OutputManager(
+      outputModes,
+      octokit.rest,
+      context,
+      commitSha,
+    );
+    const outputIdentifiers = await outputManager.createInitial(context);
+
+    // Output the identifiers for downstream steps
+    core.setOutput(
+      "output_identifiers",
+      outputManager.serializeIdentifiers(outputIdentifiers),
+    );
+
+    // Legacy support: output the primary identifier as claude_comment_id
+    const primaryIdentifier =
+      outputManager.getPrimaryIdentifier(outputIdentifiers);
+    if (primaryIdentifier) {
+      core.setOutput("claude_comment_id", primaryIdentifier);
+    }
 
     // Step 7: Fetch GitHub data (once for both branch setup and prompt creation)
     const githubData = await fetchGitHubData({
@@ -66,18 +89,19 @@ async function run() {
     const branchInfo = await setupBranch(octokit, githubData, context);
 
     // Step 9: Update initial comment with branch link (only for issues that created a new branch)
-    if (branchInfo.claudeBranch) {
+    // Note: This only applies to pr_comment strategy, others don't support updates
+    if (branchInfo.claudeBranch && outputIdentifiers.pr_comment) {
       await updateTrackingComment(
         octokit,
         context,
-        commentId,
+        parseInt(outputIdentifiers.pr_comment),
         branchInfo.claudeBranch,
       );
     }
 
     // Step 10: Create prompt file
     await createPrompt(
-      commentId,
+      primaryIdentifier ? parseInt(primaryIdentifier) : 0,
       branchInfo.baseBranch,
       branchInfo.claudeBranch,
       githubData,
@@ -92,7 +116,7 @@ async function run() {
       repo: context.repository.repo,
       branch: branchInfo.currentBranch,
       additionalMcpConfig,
-      claudeCommentId: commentId.toString(),
+      claudeCommentId: primaryIdentifier || "0",
       allowedTools: context.inputs.allowedTools,
     });
     core.setOutput("mcp_config", mcpConfig);
