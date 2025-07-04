@@ -2,12 +2,8 @@
 
 import { createOctokit } from "../github/api/client";
 import * as fs from "fs/promises";
-import {
-  type ExecutionDetails,
-} from "../github/operations/comment-logic";
-import {
-  parseGitHubContext,
-} from "../github/context";
+import { type ExecutionDetails } from "../github/operations/comment-logic";
+import { parseGitHubContext } from "../github/context";
 import { GITHUB_SERVER_URL } from "../github/api/config";
 import { checkAndDeleteEmptyBranch } from "../github/operations/branch-cleanup";
 import { OutputManager, type OutputIdentifiers } from "../output-manager";
@@ -15,14 +11,16 @@ import type { ReviewContent } from "../output-strategies/base";
 
 async function run() {
   try {
-    // Legacy fallback for claude_comment_id 
+    // Legacy fallback for claude_comment_id
     const legacyCommentId = process.env.CLAUDE_COMMENT_ID;
     const outputIdentifiersJson = process.env.OUTPUT_IDENTIFIERS;
     const githubToken = process.env.GITHUB_TOKEN!;
     const claudeBranch = process.env.CLAUDE_BRANCH;
     const baseBranch = process.env.BASE_BRANCH || "main";
     const triggerUsername = process.env.TRIGGER_USERNAME;
-    const outputModes = OutputManager.parseOutputModes(process.env.OUTPUT_MODE || "pr_comment");
+    const outputModes = OutputManager.parseOutputModes(
+      process.env.OUTPUT_MODE || "pr_comment",
+    );
     const commitSha = process.env.COMMIT_SHA;
 
     const context = parseGitHubContext();
@@ -32,7 +30,9 @@ async function run() {
     // Parse output identifiers from prepare step or fall back to legacy
     let outputIdentifiers: OutputIdentifiers;
     if (outputIdentifiersJson) {
-      outputIdentifiers = OutputManager.deserializeIdentifiers(outputIdentifiersJson);
+      outputIdentifiers = OutputManager.deserializeIdentifiers(
+        outputIdentifiersJson,
+      );
     } else if (legacyCommentId) {
       // Legacy fallback - assume pr_comment mode
       outputIdentifiers = { pr_comment: legacyCommentId };
@@ -41,7 +41,12 @@ async function run() {
     }
 
     // Create output manager for final update
-    const outputManager = new OutputManager(outputModes, octokit.rest, context, commitSha);
+    const outputManager = new OutputManager(
+      outputModes,
+      octokit.rest,
+      context,
+      commitSha,
+    );
 
     const serverUrl = GITHUB_SERVER_URL;
     const jobUrl = `${serverUrl}/${owner}/${repo}/actions/runs/${process.env.GITHUB_RUN_ID}`;
@@ -61,15 +66,20 @@ async function run() {
           currentBody = issueComment.body ?? "";
         } catch {
           // If issue comment fails, try PR review comment
-          const { data: prComment } = await octokit.rest.pulls.getReviewComment({
-            owner,
-            repo,
-            comment_id: commentId,
-          });
+          const { data: prComment } = await octokit.rest.pulls.getReviewComment(
+            {
+              owner,
+              repo,
+              comment_id: commentId,
+            },
+          );
           currentBody = prComment.body ?? "";
         }
       } catch (error) {
-        console.warn("Could not fetch current comment body, proceeding with empty body:", error);
+        console.warn(
+          "Could not fetch current comment body, proceeding with empty body:",
+          error,
+        );
       }
     }
 

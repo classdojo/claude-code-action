@@ -7,13 +7,16 @@ import type { OutputStrategy, ReviewContent } from "./base";
 export class CommitCommentStrategy implements OutputStrategy {
   readonly name = "commit_comment";
 
-  constructor(private octokit: Octokit, private commitSha?: string) {}
+  constructor(
+    private octokit: Octokit,
+    private commitSha?: string,
+  ) {}
 
   validate(context: ParsedGitHubContext): void {
     const sha = this.getCommitSha(context);
     if (!sha) {
       throw new Error(
-        "'commit_comment' output mode requires a determinable commit SHA (provide commit_sha input, or use in pull_request/push context)"
+        "'commit_comment' output mode requires a determinable commit SHA (provide commit_sha input, or use in pull_request/push context)",
       );
     }
   }
@@ -25,12 +28,15 @@ export class CommitCommentStrategy implements OutputStrategy {
     }
 
     // 2. Use PR HEAD commit if in PR context
-    if ('pull_request' in context.payload && context.payload.pull_request?.head?.sha) {
+    if (
+      "pull_request" in context.payload &&
+      context.payload.pull_request?.head?.sha
+    ) {
       return context.payload.pull_request.head.sha;
     }
 
     // 3. Use workflow commit SHA
-    if ('after' in context.payload && context.payload.after) {
+    if ("after" in context.payload && context.payload.after) {
       return context.payload.after;
     }
 
@@ -47,7 +53,7 @@ export class CommitCommentStrategy implements OutputStrategy {
   async updateFinal(
     _identifier: string | null,
     context: ParsedGitHubContext,
-    content: ReviewContent
+    content: ReviewContent,
   ): Promise<void> {
     const sha = this.getCommitSha(context);
     if (!sha) {
@@ -67,7 +73,9 @@ export class CommitCommentStrategy implements OutputStrategy {
         body: commentBody,
       });
 
-      console.log(`✅ Created commit comment on ${sha.substring(0, 7)}: ${response.data.html_url}`);
+      console.log(
+        `✅ Created commit comment on ${sha.substring(0, 7)}: ${response.data.html_url}`,
+      );
     } catch (error) {
       console.error(`Error creating commit comment on ${sha}:`, error);
       throw error;
@@ -87,10 +95,13 @@ export class CommitCommentStrategy implements OutputStrategy {
 
     // Duration info
     if (content.executionDetails?.duration_ms) {
-      const totalSeconds = Math.round(content.executionDetails.duration_ms / 1000);
+      const totalSeconds = Math.round(
+        content.executionDetails.duration_ms / 1000,
+      );
       const minutes = Math.floor(totalSeconds / 60);
       const seconds = totalSeconds % 60;
-      const durationStr = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+      const durationStr =
+        minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
       lines.push(`⏱️ Duration: ${durationStr}`);
     }
 
@@ -118,18 +129,20 @@ export class CommitCommentStrategy implements OutputStrategy {
 
     // Main content (strip existing header/footer formatting)
     let mainContent = content.body;
-    
+
     // Remove "Claude Code is working..." pattern
-    mainContent = mainContent.replace(/Claude Code is working[…\.]{1,3}(?:\s*<img[^>]*>)?/i, "").trim();
-    
+    mainContent = mainContent
+      .replace(/Claude Code is working[…\.]{1,3}(?:\s*<img[^>]*>)?/i, "")
+      .trim();
+
     // Remove existing job/branch links
     mainContent = mainContent.replace(/\[View job\]\([^\)]+\)/g, "");
     mainContent = mainContent.replace(/\[View branch\]\([^\)]+\)/g, "");
     mainContent = mainContent.replace(/\[Create .* PR\]\([^\)]+\)/g, "");
-    
+
     // Remove separator lines
     mainContent = mainContent.replace(/\n*---\n*/g, "");
-    
+
     // Clean up extra whitespace
     mainContent = mainContent.trim();
 

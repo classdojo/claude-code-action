@@ -2,7 +2,10 @@
 
 import type { Octokit } from "@octokit/rest";
 import { appendFileSync } from "fs";
-import { createJobRunLink, createCommentBody } from "../github/operations/comments/common";
+import {
+  createJobRunLink,
+  createCommentBody,
+} from "../github/operations/comments/common";
 import { updateCommentBody } from "../github/operations/comment-logic";
 import {
   isPullRequestReviewCommentEvent,
@@ -18,7 +21,9 @@ export class PrCommentStrategy implements OutputStrategy {
   validate(context: ParsedGitHubContext): void {
     // PR comment strategy works for both issues and PRs
     if (!context.entityNumber) {
-      throw new Error("'pr_comment' output mode requires an issue or PR number");
+      throw new Error(
+        "'pr_comment' output mode requires an issue or PR number",
+      );
     }
   }
 
@@ -80,7 +85,7 @@ export class PrCommentStrategy implements OutputStrategy {
   async updateFinal(
     identifier: string | null,
     context: ParsedGitHubContext,
-    content: ReviewContent
+    content: ReviewContent,
   ): Promise<void> {
     if (!identifier) {
       throw new Error("Cannot update comment without identifier");

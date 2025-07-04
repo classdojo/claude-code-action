@@ -51,16 +51,27 @@ async function run() {
     await checkHumanActor(octokit.rest, context);
 
     // Step 6: Setup output manager and create initial tracking
-    const outputModes = OutputManager.parseOutputModes(process.env.OUTPUT_MODE || "pr_comment");
+    const outputModes = OutputManager.parseOutputModes(
+      process.env.OUTPUT_MODE || "pr_comment",
+    );
     const commitSha = process.env.COMMIT_SHA;
-    const outputManager = new OutputManager(outputModes, octokit.rest, context, commitSha);
+    const outputManager = new OutputManager(
+      outputModes,
+      octokit.rest,
+      context,
+      commitSha,
+    );
     const outputIdentifiers = await outputManager.createInitial(context);
-    
+
     // Output the identifiers for downstream steps
-    core.setOutput("output_identifiers", outputManager.serializeIdentifiers(outputIdentifiers));
-    
+    core.setOutput(
+      "output_identifiers",
+      outputManager.serializeIdentifiers(outputIdentifiers),
+    );
+
     // Legacy support: output the primary identifier as claude_comment_id
-    const primaryIdentifier = outputManager.getPrimaryIdentifier(outputIdentifiers);
+    const primaryIdentifier =
+      outputManager.getPrimaryIdentifier(outputIdentifiers);
     if (primaryIdentifier) {
       core.setOutput("claude_comment_id", primaryIdentifier);
     }

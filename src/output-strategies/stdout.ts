@@ -18,10 +18,10 @@ export class StdoutStrategy implements OutputStrategy {
   async updateFinal(
     _identifier: string | null,
     _context: ParsedGitHubContext,
-    content: ReviewContent
+    content: ReviewContent,
   ): Promise<void> {
     const output = this.formatForStdout(content);
-    
+
     console.log(""); // Empty line before output
     console.log("=".repeat(60));
     console.log("Claude Code Review Summary");
@@ -42,10 +42,13 @@ export class StdoutStrategy implements OutputStrategy {
 
     // Duration
     if (content.executionDetails?.duration_ms) {
-      const totalSeconds = Math.round(content.executionDetails.duration_ms / 1000);
+      const totalSeconds = Math.round(
+        content.executionDetails.duration_ms / 1000,
+      );
       const minutes = Math.floor(totalSeconds / 60);
       const seconds = totalSeconds % 60;
-      const durationStr = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+      const durationStr =
+        minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
       lines.push(`Duration: ${durationStr}`);
     }
 
@@ -85,21 +88,23 @@ export class StdoutStrategy implements OutputStrategy {
 
     // Main content (convert markdown to plain text)
     let mainContent = content.body;
-    
+
     // Remove "Claude Code is working..." pattern
-    mainContent = mainContent.replace(/Claude Code is working[…\.]{1,3}(?:\s*<img[^>]*>)?/i, "").trim();
-    
+    mainContent = mainContent
+      .replace(/Claude Code is working[…\.]{1,3}(?:\s*<img[^>]*>)?/i, "")
+      .trim();
+
     // Convert markdown to plain text
     mainContent = this.markdownToPlainText(mainContent);
-    
+
     // Remove existing job/branch links
     mainContent = mainContent.replace(/\[View job\]\([^\)]+\)/g, "");
     mainContent = mainContent.replace(/\[View branch\]\([^\)]+\)/g, "");
     mainContent = mainContent.replace(/\[Create .* PR\]\([^\)]+\)/g, "");
-    
+
     // Remove separator lines
     mainContent = mainContent.replace(/\n*---\n*/g, "");
-    
+
     // Clean up extra whitespace
     mainContent = mainContent.trim();
 
@@ -113,19 +118,21 @@ export class StdoutStrategy implements OutputStrategy {
   }
 
   private markdownToPlainText(markdown: string): string {
-    return markdown
-      // Remove markdown links but keep URL
-      .replace(/\[([^\]]*)\]\(([^)]*)\)/g, "$1 ($2)")
-      // Remove bold/italic
-      .replace(/\*\*([^*]*)\*\*/g, "$1")
-      .replace(/\*([^*]*)\*/g, "$1")
-      // Remove code blocks
-      .replace(/```[\s\S]*?```/g, "[CODE BLOCK]")
-      // Remove inline code
-      .replace(/`([^`]*)`/g, "$1")
-      // Remove headers
-      .replace(/^#{1,6}\s+(.*)$/gm, "$1")
-      // Clean up multiple newlines
-      .replace(/\n{3,}/g, "\n\n");
+    return (
+      markdown
+        // Remove markdown links but keep URL
+        .replace(/\[([^\]]*)\]\(([^)]*)\)/g, "$1 ($2)")
+        // Remove bold/italic
+        .replace(/\*\*([^*]*)\*\*/g, "$1")
+        .replace(/\*([^*]*)\*/g, "$1")
+        // Remove code blocks
+        .replace(/```[\s\S]*?```/g, "[CODE BLOCK]")
+        // Remove inline code
+        .replace(/`([^`]*)`/g, "$1")
+        // Remove headers
+        .replace(/^#{1,6}\s+(.*)$/gm, "$1")
+        // Clean up multiple newlines
+        .replace(/\n{3,}/g, "\n\n")
+    );
   }
 }

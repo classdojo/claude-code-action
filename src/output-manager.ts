@@ -18,7 +18,7 @@ export class OutputManager {
     outputModes: string[],
     octokit: Octokit | null,
     context: ParsedGitHubContext,
-    commitSha?: string
+    commitSha?: string,
   ) {
     // Create and validate strategies based on output modes
     for (const mode of outputModes) {
@@ -28,13 +28,17 @@ export class OutputManager {
       switch (trimmedMode) {
         case "pr_comment":
           if (!octokit) {
-            throw new Error("'pr_comment' output mode requires GitHub authentication (octokit instance)");
+            throw new Error(
+              "'pr_comment' output mode requires GitHub authentication (octokit instance)",
+            );
           }
           strategy = new PrCommentStrategy(octokit);
           break;
         case "commit_comment":
           if (!octokit) {
-            throw new Error("'commit_comment' output mode requires GitHub authentication (octokit instance)");
+            throw new Error(
+              "'commit_comment' output mode requires GitHub authentication (octokit instance)",
+            );
           }
           strategy = new CommitCommentStrategy(octokit, commitSha);
           break;
@@ -42,7 +46,9 @@ export class OutputManager {
           strategy = new StdoutStrategy();
           break;
         default:
-          throw new Error(`Unknown output mode: ${trimmedMode}. Valid options: pr_comment, commit_comment, stdout`);
+          throw new Error(
+            `Unknown output mode: ${trimmedMode}. Valid options: pr_comment, commit_comment, stdout`,
+          );
       }
 
       // Validate the strategy can work in this context
@@ -50,8 +56,11 @@ export class OutputManager {
         strategy.validate(context);
         this.strategies.push(strategy);
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        throw new Error(`Output mode '${trimmedMode}' validation failed: ${errorMessage}`);
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+        throw new Error(
+          `Output mode '${trimmedMode}' validation failed: ${errorMessage}`,
+        );
       }
     }
 
@@ -59,7 +68,9 @@ export class OutputManager {
       throw new Error("No valid output strategies configured");
     }
 
-    console.log(`📤 Configured output strategies: ${this.strategies.map(s => s.name).join(", ")}`);
+    console.log(
+      `📤 Configured output strategies: ${this.strategies.map((s) => s.name).join(", ")}`,
+    );
   }
 
   static parseOutputModes(outputModeInput: string): string[] {
@@ -67,8 +78,11 @@ export class OutputManager {
       return ["pr_comment"]; // Default
     }
 
-    const modes = outputModeInput.split(",").map(mode => mode.trim()).filter(mode => mode.length > 0);
-    
+    const modes = outputModeInput
+      .split(",")
+      .map((mode) => mode.trim())
+      .filter((mode) => mode.length > 0);
+
     if (modes.length === 0) {
       return ["pr_comment"]; // Default
     }
@@ -77,7 +91,9 @@ export class OutputManager {
     return [...new Set(modes)];
   }
 
-  async createInitial(context: ParsedGitHubContext): Promise<OutputIdentifiers> {
+  async createInitial(
+    context: ParsedGitHubContext,
+  ): Promise<OutputIdentifiers> {
     const identifiers: OutputIdentifiers = {};
     const errors: Error[] = [];
 
@@ -86,8 +102,12 @@ export class OutputManager {
         const identifier = await strategy.createInitial(context);
         identifiers[strategy.name] = identifier;
       } catch (error) {
-        console.error(`❌ Output strategy ${strategy.name} failed during createInitial:`, error);
-        const errorObj = error instanceof Error ? error : new Error(String(error));
+        console.error(
+          `❌ Output strategy ${strategy.name} failed during createInitial:`,
+          error,
+        );
+        const errorObj =
+          error instanceof Error ? error : new Error(String(error));
         errors.push(errorObj);
         identifiers[strategy.name] = null;
       }
@@ -96,7 +116,9 @@ export class OutputManager {
     // If all strategies failed during initial creation, that's a problem
     if (errors.length === this.strategies.length) {
       const lastError = errors[errors.length - 1];
-      throw new Error(`All output strategies failed during initial creation. Last error: ${lastError?.message || 'Unknown error'}`);
+      throw new Error(
+        `All output strategies failed during initial creation. Last error: ${lastError?.message || "Unknown error"}`,
+      );
     }
 
     return identifiers;
@@ -105,7 +127,7 @@ export class OutputManager {
   async updateFinal(
     identifiers: OutputIdentifiers,
     context: ParsedGitHubContext,
-    content: ReviewContent
+    content: ReviewContent,
   ): Promise<void> {
     const errors: Error[] = [];
 
@@ -114,20 +136,28 @@ export class OutputManager {
         const identifier = identifiers[strategy.name] || null;
         await strategy.updateFinal(identifier, context, content);
       } catch (error) {
-        console.error(`❌ Output strategy ${strategy.name} failed during updateFinal:`, error);
-        const errorObj = error instanceof Error ? error : new Error(String(error));
+        console.error(
+          `❌ Output strategy ${strategy.name} failed during updateFinal:`,
+          error,
+        );
+        const errorObj =
+          error instanceof Error ? error : new Error(String(error));
         errors.push(errorObj);
       }
     }
 
     // If all strategies failed, throw an error to mark the action as failed
     if (errors.length === this.strategies.length) {
-      throw new Error(`All ${this.strategies.length} output strategies failed. See logs for details.`);
+      throw new Error(
+        `All ${this.strategies.length} output strategies failed. See logs for details.`,
+      );
     }
 
     // If some strategies failed but others succeeded, log a warning
     if (errors.length > 0) {
-      console.warn(`⚠️ ${errors.length} of ${this.strategies.length} output strategies failed, but action completed partially.`);
+      console.warn(
+        `⚠️ ${errors.length} of ${this.strategies.length} output strategies failed, but action completed partially.`,
+      );
     }
   }
 
@@ -169,7 +199,10 @@ export class OutputManager {
     try {
       return JSON.parse(serialized);
     } catch (error) {
-      console.warn("Failed to parse identifiers JSON, treating as empty:", error);
+      console.warn(
+        "Failed to parse identifiers JSON, treating as empty:",
+        error,
+      );
       return {};
     }
   }

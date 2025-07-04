@@ -18,7 +18,7 @@ export interface ReviewContent {
 
 export interface OutputStrategy {
   readonly name: string;
-  
+
   /**
    * Creates an initial placeholder/tracking entity if needed.
    * Returns an identifier (like a comment ID) for future updates.
@@ -31,7 +31,7 @@ export interface OutputStrategy {
   updateFinal(
     identifier: string | null,
     context: ParsedGitHubContext,
-    content: ReviewContent
+    content: ReviewContent,
   ): Promise<void>;
 
   /**
