@@ -4,7 +4,7 @@
 
 A general-purpose [Claude Code](https://claude.ai/code) action for GitHub PRs and issues that can answer questions and implement code changes. This action listens for a trigger phrase in comments and activates Claude act on the request. It supports multiple authentication methods including Anthropic direct API, Amazon Bedrock, and Google Vertex AI.
 
-## Features
+##   Features
 
 - 🤖 **Interactive Code Assistant**: Claude can answer questions about code, architecture, and programming
 - 🔍 **Code Review**: Analyzes PR changes and suggests improvements
