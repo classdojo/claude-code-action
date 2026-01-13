@@ -125,6 +125,14 @@ inputs:
     description: "Newline-separated list of Claude Code plugin marketplace Git URLs to install from (e.g., 'https://github.com/user/marketplace1.git\nhttps://github.com/user/marketplace2.git')"
     required: false
     default: ""
+  output_mode:
+    description: "Where to post Claude's output. Comma-separated list. Options: pr_comment, commit_comment, stdout. Default: pr_comment"
+    required: false
+    default: "pr_comment"
+  commit_sha:
+    description: "Specific commit SHA for commit_comment mode. Defaults to PR HEAD or github.sha"
+    required: false
+    default: ""
 
 outputs:
   execution_file:
@@ -197,6 +205,8 @@ runs:
         INCLUDE_FIX_LINKS: ${{ inputs.include_fix_links }}
         ADDITIONAL_PERMISSIONS: ${{ inputs.additional_permissions }}
         CLAUDE_ARGS: ${{ inputs.claude_args }}
+        OUTPUT_MODE: ${{ inputs.output_mode }}
+        COMMIT_SHA: ${{ inputs.commit_sha }}
         ALL_INPUTS: ${{ toJson(inputs) }}
 
     - name: Install Base Action Dependencies
@@ -327,6 +337,8 @@ runs:
         USE_STICKY_COMMENT: ${{ inputs.use_sticky_comment }}
         USE_COMMIT_SIGNING: ${{ inputs.use_commit_signing }}
         TRACK_PROGRESS: ${{ inputs.track_progress }}
+        OUTPUT_MODE: ${{ inputs.output_mode }}
+        COMMIT_SHA: ${{ inputs.commit_sha }}
 
     - name: Display Claude Code Report
       if: steps.prepare.outputs.contains_trigger == 'true' && steps.claude-code.outputs.execution_file != ''

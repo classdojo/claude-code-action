@@ -14,6 +14,8 @@ import {
 import { GITHUB_SERVER_URL } from "../github/api/config";
 import { checkAndCommitOrDeleteBranch } from "../github/operations/branch-cleanup";
 import { updateClaudeComment } from "../github/operations/comments/update-claude-comment";
+import { OutputManager } from "../output-manager";
+import type { ReviewContent } from "../output-strategies/base";
 
 async function run() {
   try {
@@ -233,6 +235,49 @@ async function run() {
         updateError,
       );
       throw updateError;
+    }
+
+    // Handle additional output modes (stdout, commit_comment)
+    const outputModeInput = process.env.OUTPUT_MODE || "pr_comment";
+    const outputModes = OutputManager.parseOutputModes(outputModeInput);
+
+    // Filter out pr_comment since we already handled it above
+    const additionalModes = outputModes.filter(mode => mode !== "pr_comment");
+
+    if (additionalModes.length > 0) {
+      try {
+        const commitSha = process.env.COMMIT_SHA || context.sha;
+        const outputManager = new OutputManager(
+          additionalModes,
+          octokit,
+          context,
+          commitSha,
+        );
+
+        // Prepare the review content
+        const reviewContent: ReviewContent = {
+          body: updatedBody,
+          actionFailed,
+          executionDetails: executionDetails || undefined,
+          jobUrl,
+          branchName: shouldDeleteBranch || !branchLink ? undefined : claudeBranch,
+          prLink: prLink || undefined,
+          triggerUsername,
+          errorDetails,
+        };
+
+        // Write to additional output locations
+        await outputManager.updateFinal({}, context, reviewContent);
+        console.log(
+          `✅ Wrote output to additional modes: ${additionalModes.join(", ")}`,
+        );
+      } catch (outputError) {
+        console.error(
+          `Failed to write to additional output modes:`,
+          outputError,
+        );
+        // Don't fail the entire action if additional outputs fail
+      }
     }
 
     process.exit(0);
