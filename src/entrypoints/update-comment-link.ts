@@ -2,95 +2,110 @@
 
 import { createOctokit } from "../github/api/client";
 import * as fs from "fs/promises";
-import { type ExecutionDetails } from "../github/operations/comment-logic";
-import { parseGitHubContext } from "../github/context";
+import {
+  updateCommentBody,
+  type CommentUpdateInput,
+} from "../github/operations/comment-logic";
+import {
+  parseGitHubContext,
+  isPullRequestReviewCommentEvent,
+  isEntityContext,
+} from "../github/context";
 import { GITHUB_SERVER_URL } from "../github/api/config";
-import { checkAndDeleteEmptyBranch } from "../github/operations/branch-cleanup";
-import { OutputManager, type OutputIdentifiers } from "../output-manager";
-import type { ReviewContent } from "../output-strategies/base";
+import { checkAndCommitOrDeleteBranch } from "../github/operations/branch-cleanup";
+import { updateClaudeComment } from "../github/operations/comments/update-claude-comment";
 
 async function run() {
   try {
-    // Legacy fallback for claude_comment_id
-    const legacyCommentId = process.env.CLAUDE_COMMENT_ID;
-    const outputIdentifiersJson = process.env.OUTPUT_IDENTIFIERS;
+    const commentId = parseInt(process.env.CLAUDE_COMMENT_ID!);
     const githubToken = process.env.GITHUB_TOKEN!;
     const claudeBranch = process.env.CLAUDE_BRANCH;
     const baseBranch = process.env.BASE_BRANCH || "main";
     const triggerUsername = process.env.TRIGGER_USERNAME;
-    const outputModes = OutputManager.parseOutputModes(
-      process.env.OUTPUT_MODE || "pr_comment",
-    );
-    const commitSha = process.env.COMMIT_SHA;
 
     const context = parseGitHubContext();
-    const { owner, repo } = context.repository;
-    const octokit = createOctokit(githubToken);
 
-    // Parse output identifiers from prepare step or fall back to legacy
-    let outputIdentifiers: OutputIdentifiers;
-    if (outputIdentifiersJson) {
-      outputIdentifiers = OutputManager.deserializeIdentifiers(
-        outputIdentifiersJson,
-      );
-    } else if (legacyCommentId) {
-      // Legacy fallback - assume pr_comment mode
-      outputIdentifiers = { pr_comment: legacyCommentId };
-    } else {
-      outputIdentifiers = {};
+    // This script is only called for entity-based events
+    if (!isEntityContext(context)) {
+      throw new Error("update-comment-link requires an entity context");
     }
 
-    // Create output manager for final update
-    const outputManager = new OutputManager(
-      outputModes,
-      octokit.rest,
-      context,
-      commitSha,
-    );
+    const { owner, repo } = context.repository;
+
+    const octokit = createOctokit(githubToken);
 
     const serverUrl = GITHUB_SERVER_URL;
     const jobUrl = `${serverUrl}/${owner}/${repo}/actions/runs/${process.env.GITHUB_RUN_ID}`;
 
-    // For legacy support, we still need to fetch the current body if we have a pr_comment identifier
-    let currentBody = "";
-    if (outputIdentifiers.pr_comment) {
-      try {
-        const commentId = parseInt(outputIdentifiers.pr_comment);
-        // Try to fetch the current comment body for the update
-        try {
-          const { data: issueComment } = await octokit.rest.issues.getComment({
-            owner,
-            repo,
-            comment_id: commentId,
-          });
-          currentBody = issueComment.body ?? "";
-        } catch {
-          // If issue comment fails, try PR review comment
-          const { data: prComment } = await octokit.rest.pulls.getReviewComment(
-            {
-              owner,
-              repo,
-              comment_id: commentId,
-            },
-          );
-          currentBody = prComment.body ?? "";
-        }
-      } catch (error) {
-        console.warn(
-          "Could not fetch current comment body, proceeding with empty body:",
-          error,
-        );
+    let comment;
+    let isPRReviewComment = false;
+
+    try {
+      // GitHub has separate ID namespaces for review comments and issue comments
+      // We need to use the correct API based on the event type
+      if (isPullRequestReviewCommentEvent(context)) {
+        // For PR review comments, use the pulls API
+        console.log(`Fetching PR review comment ${commentId}`);
+        const { data: prComment } = await octokit.rest.pulls.getReviewComment({
+          owner,
+          repo,
+          comment_id: commentId,
+        });
+        comment = prComment;
+        isPRReviewComment = true;
+        console.log("Successfully fetched as PR review comment");
       }
+
+      // For all other event types, use the issues API
+      if (!comment) {
+        console.log(`Fetching issue comment ${commentId}`);
+        const { data: issueComment } = await octokit.rest.issues.getComment({
+          owner,
+          repo,
+          comment_id: commentId,
+        });
+        comment = issueComment;
+        isPRReviewComment = false;
+        console.log("Successfully fetched as issue comment");
+      }
+    } catch (finalError) {
+      // If all attempts fail, try to determine more information about the comment
+      console.error("Failed to fetch comment. Debug info:");
+      console.error(`Comment ID: ${commentId}`);
+      console.error(`Event name: ${context.eventName}`);
+      console.error(`Entity number: ${context.entityNumber}`);
+      console.error(`Repository: ${context.repository.full_name}`);
+
+      // Try to get the PR info to understand the comment structure
+      try {
+        const { data: pr } = await octokit.rest.pulls.get({
+          owner,
+          repo,
+          pull_number: context.entityNumber,
+        });
+        console.log(`PR state: ${pr.state}`);
+        console.log(`PR comments count: ${pr.comments}`);
+        console.log(`PR review comments count: ${pr.review_comments}`);
+      } catch {
+        console.error("Could not fetch PR info for debugging");
+      }
+
+      throw finalError;
     }
 
+    const currentBody = comment.body ?? "";
+
     // Check if we need to add branch link for new branches
-    const { shouldDeleteBranch, branchLink } = await checkAndDeleteEmptyBranch(
-      octokit,
-      owner,
-      repo,
-      claudeBranch,
-      baseBranch,
-    );
+    const useCommitSigning = process.env.USE_COMMIT_SIGNING === "true";
+    const { shouldDeleteBranch, branchLink } =
+      await checkAndCommitOrDeleteBranch(
+        octokit,
+        owner,
+        repo,
+        claudeBranch,
+        baseBranch,
+        useCommitSigning,
+      );
 
     // Check if we need to add PR URL when we have a new branch
     let prLink = "";
@@ -136,7 +151,11 @@ async function run() {
     }
 
     // Check if action failed and read output file for execution details
-    let executionDetails: ExecutionDetails | null = null;
+    let executionDetails: {
+      total_cost_usd?: number;
+      duration_ms?: number;
+      duration_api_ms?: number;
+    } | null = null;
     let actionFailed = false;
     let errorDetails: string | undefined;
 
@@ -160,11 +179,11 @@ async function run() {
             const lastElement = outputData[outputData.length - 1];
             if (
               lastElement.type === "result" &&
-              "cost_usd" in lastElement &&
+              "total_cost_usd" in lastElement &&
               "duration_ms" in lastElement
             ) {
               executionDetails = {
-                cost_usd: lastElement.cost_usd,
+                total_cost_usd: lastElement.total_cost_usd,
                 duration_ms: lastElement.duration_ms,
                 duration_api_ms: lastElement.duration_api_ms,
               };
@@ -182,23 +201,39 @@ async function run() {
       }
     }
 
-    // Prepare content for all output strategies
-    const reviewContent: ReviewContent = {
-      summary: actionFailed ? "Action failed" : "Action completed",
-      body: currentBody,
+    // Prepare input for updateCommentBody function
+    const commentInput: CommentUpdateInput = {
+      currentBody,
       actionFailed,
       executionDetails,
       jobUrl,
       branchLink,
       prLink,
-      branchName: shouldDeleteBranch ? undefined : claudeBranch,
+      branchName: shouldDeleteBranch || !branchLink ? undefined : claudeBranch,
       triggerUsername,
       errorDetails,
     };
 
-    // Use OutputManager to update all configured output strategies
-    await outputManager.updateFinal(outputIdentifiers, context, reviewContent);
-    console.log("✅ Updated all configured output strategies");
+    const updatedBody = updateCommentBody(commentInput);
+
+    try {
+      await updateClaudeComment(octokit.rest, {
+        owner,
+        repo,
+        commentId,
+        body: updatedBody,
+        isPullRequestReviewComment: isPRReviewComment,
+      });
+      console.log(
+        `✅ Updated ${isPRReviewComment ? "PR review" : "issue"} comment ${commentId} with job link`,
+      );
+    } catch (updateError) {
+      console.error(
+        `Failed to update ${isPRReviewComment ? "PR review" : "issue"} comment:`,
+        updateError,
+      );
+      throw updateError;
+    }
 
     process.exit(0);
   } catch (error) {

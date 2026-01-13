@@ -10,6 +10,9 @@ export type GitHubComment = {
   body: string;
   author: GitHubAuthor;
   createdAt: string;
+  updatedAt?: string;
+  lastEditedAt?: string;
+  isMinimized?: boolean;
 };
 
 export type GitHubReviewComment = GitHubComment & {
@@ -40,6 +43,8 @@ export type GitHubReview = {
   body: string;
   state: string;
   submittedAt: string;
+  updatedAt?: string;
+  lastEditedAt?: string;
   comments: {
     nodes: GitHubReviewComment[];
   };
@@ -53,9 +58,16 @@ export type GitHubPullRequest = {
   headRefName: string;
   headRefOid: string;
   createdAt: string;
+  updatedAt?: string;
+  lastEditedAt?: string;
   additions: number;
   deletions: number;
   state: string;
+  labels: {
+    nodes: Array<{
+      name: string;
+    }>;
+  };
   commits: {
     totalCount: number;
     nodes: Array<{
@@ -78,7 +90,14 @@ export type GitHubIssue = {
   body: string;
   author: GitHubAuthor;
   createdAt: string;
+  updatedAt?: string;
+  lastEditedAt?: string;
   state: string;
+  labels: {
+    nodes: Array<{
+      name: string;
+    }>;
+  };
   comments: {
     nodes: GitHubComment[];
   };

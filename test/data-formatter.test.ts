@@ -28,6 +28,9 @@ describe("formatContext", () => {
       additions: 50,
       deletions: 30,
       state: "OPEN",
+      labels: {
+        nodes: [],
+      },
       commits: {
         totalCount: 3,
         nodes: [],
@@ -63,6 +66,9 @@ Changed Files: 2 files`,
       author: { login: "test-user" },
       createdAt: "2023-01-01T00:00:00Z",
       state: "OPEN",
+      labels: {
+        nodes: [],
+      },
       comments: {
         nodes: [],
       },
@@ -251,6 +257,63 @@ describe("formatComments", () => {
     expect(result).toBe(
       `[user1 at 2023-01-01T00:00:00Z]: Image: ![](https://github.com/user-attachments/assets/test.png)`,
     );
+  });
+
+  test("filters out minimized comments", () => {
+    const comments: GitHubComment[] = [
+      {
+        id: "1",
+        databaseId: "100001",
+        body: "Normal comment",
+        author: { login: "user1" },
+        createdAt: "2023-01-01T00:00:00Z",
+        isMinimized: false,
+      },
+      {
+        id: "2",
+        databaseId: "100002",
+        body: "Minimized comment",
+        author: { login: "user2" },
+        createdAt: "2023-01-02T00:00:00Z",
+        isMinimized: true,
+      },
+      {
+        id: "3",
+        databaseId: "100003",
+        body: "Another normal comment",
+        author: { login: "user3" },
+        createdAt: "2023-01-03T00:00:00Z",
+      },
+    ];
+
+    const result = formatComments(comments);
+    expect(result).toBe(
+      `[user1 at 2023-01-01T00:00:00Z]: Normal comment\n\n[user3 at 2023-01-03T00:00:00Z]: Another normal comment`,
+    );
+  });
+
+  test("returns empty string when all comments are minimized", () => {
+    const comments: GitHubComment[] = [
+      {
+        id: "1",
+        databaseId: "100001",
+        body: "Minimized comment 1",
+        author: { login: "user1" },
+        createdAt: "2023-01-01T00:00:00Z",
+        isMinimized: true,
+      },
+      {
+        id: "2",
+        databaseId: "100002",
+        body: "Minimized comment 2",
+        author: { login: "user2" },
+        createdAt: "2023-01-02T00:00:00Z",
+        isMinimized: true,
+      },
+    ];
+
+    const result = formatComments(comments);
+    expect(result).toBe("");
   });
 });
 
@@ -515,6 +578,159 @@ describe("formatReviewComments", () => {
     const result = formatReviewComments(reviewData);
     expect(result).toBe(
       `[Review by reviewer1 at 2023-01-01T00:00:00Z]: APPROVED\nReview body\n  [Comment on src/index.ts:42]: Image: ![](https://github.com/user-attachments/assets/test.png)`,
+    );
+  });
+
+  test("filters out minimized review comments", () => {
+    const reviewData = {
+      nodes: [
+        {
+          id: "review1",
+          databaseId: "300001",
+          author: { login: "reviewer1" },
+          body: "Review with mixed comments",
+          state: "APPROVED",
+          submittedAt: "2023-01-01T00:00:00Z",
+          comments: {
+            nodes: [
+              {
+                id: "comment1",
+                databaseId: "200001",
+                body: "Normal review comment",
+                author: { login: "reviewer1" },
+                createdAt: "2023-01-01T00:00:00Z",
+                path: "src/index.ts",
+                line: 42,
+                isMinimized: false,
+              },
+              {
+                id: "comment2",
+                databaseId: "200002",
+                body: "Minimized review comment",
+                author: { login: "reviewer1" },
+                createdAt: "2023-01-01T00:00:00Z",
+                path: "src/utils.ts",
+                line: 15,
+                isMinimized: true,
+              },
+              {
+                id: "comment3",
+                databaseId: "200003",
+                body: "Another normal comment",
+                author: { login: "reviewer1" },
+                createdAt: "2023-01-01T00:00:00Z",
+                path: "src/main.ts",
+                line: 10,
+              },
+            ],
+          },
+        },
+      ],
+    };
+
+    const result = formatReviewComments(reviewData);
+    expect(result).toBe(
+      `[Review by reviewer1 at 2023-01-01T00:00:00Z]: APPROVED\nReview with mixed comments\n  [Comment on src/index.ts:42]: Normal review comment\n  [Comment on src/main.ts:10]: Another normal comment`,
+    );
+  });
+
+  test("returns review with only body when all review comments are minimized", () => {
+    const reviewData = {
+      nodes: [
+        {
+          id: "review1",
+          databaseId: "300001",
+          author: { login: "reviewer1" },
+          body: "Review body only",
+          state: "APPROVED",
+          submittedAt: "2023-01-01T00:00:00Z",
+          comments: {
+            nodes: [
+              {
+                id: "comment1",
+                databaseId: "200001",
+                body: "Minimized comment 1",
+                author: { login: "reviewer1" },
+                createdAt: "2023-01-01T00:00:00Z",
+                path: "src/index.ts",
+                line: 42,
+                isMinimized: true,
+              },
+              {
+                id: "comment2",
+                databaseId: "200002",
+                body: "Minimized comment 2",
+                author: { login: "reviewer1" },
+                createdAt: "2023-01-01T00:00:00Z",
+                path: "src/utils.ts",
+                line: 15,
+                isMinimized: true,
+              },
+            ],
+          },
+        },
+      ],
+    };
+
+    const result = formatReviewComments(reviewData);
+    expect(result).toBe(
+      `[Review by reviewer1 at 2023-01-01T00:00:00Z]: APPROVED\nReview body only`,
+    );
+  });
+
+  test("handles multiple reviews with mixed minimized comments", () => {
+    const reviewData = {
+      nodes: [
+        {
+          id: "review1",
+          databaseId: "300001",
+          author: { login: "reviewer1" },
+          body: "First review",
+          state: "APPROVED",
+          submittedAt: "2023-01-01T00:00:00Z",
+          comments: {
+            nodes: [
+              {
+                id: "comment1",
+                databaseId: "200001",
+                body: "Good comment",
+                author: { login: "reviewer1" },
+                createdAt: "2023-01-01T00:00:00Z",
+                path: "src/index.ts",
+                line: 42,
+                isMinimized: false,
+              },
+            ],
+          },
+        },
+        {
+          id: "review2",
+          databaseId: "300002",
+          author: { login: "reviewer2" },
+          body: "Second review",
+          state: "COMMENTED",
+          submittedAt: "2023-01-02T00:00:00Z",
+          comments: {
+            nodes: [
+              {
+                id: "comment2",
+                databaseId: "200002",
+                body: "Spam comment",
+                author: { login: "reviewer2" },
+                createdAt: "2023-01-02T00:00:00Z",
+                path: "src/utils.ts",
+                line: 15,
+                isMinimized: true,
+              },
+            ],
+          },
+        },
+      ],
+    };
+
+    const result = formatReviewComments(reviewData);
+    expect(result).toBe(
+      `[Review by reviewer1 at 2023-01-01T00:00:00Z]: APPROVED\nFirst review\n  [Comment on src/index.ts:42]: Good comment\n\n[Review by reviewer2 at 2023-01-02T00:00:00Z]: COMMENTED\nSecond review`,
     );
   });
 });

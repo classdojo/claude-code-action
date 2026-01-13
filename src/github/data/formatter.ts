@@ -14,7 +14,8 @@ export function formatContext(
 ): string {
   if (isPR) {
     const prData = contextData as GitHubPullRequest;
-    return `PR Title: ${prData.title}
+    const sanitizedTitle = sanitizeContent(prData.title);
+    return `PR Title: ${sanitizedTitle}
 PR Author: ${prData.author.login}
 PR Branch: ${prData.headRefName} -> ${prData.baseRefName}
 PR State: ${prData.state}
@@ -24,7 +25,8 @@ Total Commits: ${prData.commits.totalCount}
 Changed Files: ${prData.files.nodes.length} files`;
   } else {
     const issueData = contextData as GitHubIssue;
-    return `Issue Title: ${issueData.title}
+    const sanitizedTitle = sanitizeContent(issueData.title);
+    return `Issue Title: ${sanitizedTitle}
 Issue Author: ${issueData.author.login}
 Issue State: ${issueData.state}`;
   }
@@ -50,6 +52,7 @@ export function formatComments(
   imageUrlMap?: Map<string, string>,
 ): string {
   return comments
+    .filter((comment) => !comment.isMinimized)
     .map((comment) => {
       let body = comment.body;
 
@@ -96,6 +99,7 @@ export function formatReviewComments(
       review.comments.nodes.length > 0
     ) {
       const comments = review.comments.nodes
+        .filter((comment) => !comment.isMinimized)
         .map((comment) => {
           let body = comment.body;
 
@@ -110,7 +114,9 @@ export function formatReviewComments(
           return `  [Comment on ${comment.path}:${comment.line || "?"}]: ${body}`;
         })
         .join("\n");
-      reviewOutput += `\n${comments}`;
+      if (comments) {
+        reviewOutput += `\n${comments}`;
+      }
     }
 
     return reviewOutput;

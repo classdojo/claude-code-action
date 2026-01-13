@@ -13,9 +13,16 @@ export const PR_QUERY = `
         headRefName
         headRefOid
         createdAt
+        updatedAt
+        lastEditedAt
         additions
         deletions
         state
+        labels(first: 1) {
+          nodes {
+            name
+          }
+        }
         commits(first: 100) {
           totalCount
           nodes {
@@ -46,6 +53,9 @@ export const PR_QUERY = `
               login
             }
             createdAt
+            updatedAt
+            lastEditedAt
+            isMinimized
           }
         }
         reviews(first: 100) {
@@ -58,6 +68,8 @@ export const PR_QUERY = `
             body
             state
             submittedAt
+            updatedAt
+            lastEditedAt
             comments(first: 100) {
               nodes {
                 id
@@ -69,6 +81,9 @@ export const PR_QUERY = `
                   login
                 }
                 createdAt
+                updatedAt
+                lastEditedAt
+                isMinimized
               }
             }
           }
@@ -88,7 +103,14 @@ export const ISSUE_QUERY = `
           login
         }
         createdAt
+        updatedAt
+        lastEditedAt
         state
+        labels(first: 1) {
+          nodes {
+            name
+          }
+        }
         comments(first: 100) {
           nodes {
             id
@@ -98,6 +120,9 @@ export const ISSUE_QUERY = `
               login
             }
             createdAt
+            updatedAt
+            lastEditedAt
+            isMinimized
           }
         }
       }

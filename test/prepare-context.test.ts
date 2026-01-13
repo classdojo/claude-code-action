@@ -10,6 +10,7 @@ import {
   mockPullRequestCommentContext,
   mockPullRequestReviewContext,
   mockPullRequestReviewCommentContext,
+  mockPullRequestReviewWithoutCommentContext,
 } from "./mockContext";
 
 const BASE_ENV = {
@@ -35,7 +36,7 @@ describe("parseEnvVarsWithContext", () => {
         process.env = {
           ...BASE_ENV,
           BASE_BRANCH: "main",
-          CLAUDE_BRANCH: "claude/issue-67890-20240101_120000",
+          CLAUDE_BRANCH: "claude/issue-67890-20240101-1200",
         };
       });
 
@@ -44,7 +45,7 @@ describe("parseEnvVarsWithContext", () => {
           mockIssueCommentContext,
           "12345",
           "main",
-          "claude/issue-67890-20240101_120000",
+          "claude/issue-67890-20240101-1200",
         );
 
         expect(result.repository).toBe("test-owner/test-repo");
@@ -60,7 +61,7 @@ describe("parseEnvVarsWithContext", () => {
           expect(result.eventData.issueNumber).toBe("55");
           expect(result.eventData.commentId).toBe("12345678");
           expect(result.eventData.claudeBranch).toBe(
-            "claude/issue-67890-20240101_120000",
+            "claude/issue-67890-20240101-1200",
           );
           expect(result.eventData.baseBranch).toBe("main");
           expect(result.eventData.commentBody).toBe(
@@ -81,7 +82,7 @@ describe("parseEnvVarsWithContext", () => {
             mockIssueCommentContext,
             "12345",
             undefined,
-            "claude/issue-67890-20240101_120000",
+            "claude/issue-67890-20240101-1200",
           ),
         ).toThrow("BASE_BRANCH is required for issue_comment event");
       });
@@ -126,6 +127,24 @@ describe("parseEnvVarsWithContext", () => {
     });
   });
 
+  describe("pull_request_review event without comment", () => {
+    test("should parse pull_request_review event correctly", () => {
+      process.env = BASE_ENV;
+      const result = prepareContext(
+        mockPullRequestReviewWithoutCommentContext,
+        "12345",
+      );
+
+      expect(result.eventData.eventName).toBe("pull_request_review");
+      expect(result.eventData.isPR).toBe(true);
+      expect(result.triggerUsername).toBe("senior-developer");
+      if (result.eventData.eventName === "pull_request_review") {
+        expect(result.eventData.prNumber).toBe("321");
+        expect(result.eventData.commentBody).toBe("");
+      }
+    });
+  });
+
   describe("pull_request_review_comment event", () => {
     test("should parse pull_request_review_comment event correctly", () => {
       process.env = BASE_ENV;
@@ -152,7 +171,7 @@ describe("parseEnvVarsWithContext", () => {
       process.env = {
         ...BASE_ENV,
         BASE_BRANCH: "main",
-        CLAUDE_BRANCH: "claude/issue-42-20240101_120000",
+        CLAUDE_BRANCH: "claude/issue-42-20240101-1200",
       };
     });
 
@@ -161,7 +180,7 @@ describe("parseEnvVarsWithContext", () => {
         mockIssueOpenedContext,
         "12345",
         "main",
-        "claude/issue-42-20240101_120000",
+        "claude/issue-42-20240101-1200",
       );
 
       expect(result.eventData.eventName).toBe("issues");
@@ -174,7 +193,7 @@ describe("parseEnvVarsWithContext", () => {
         expect(result.eventData.issueNumber).toBe("42");
         expect(result.eventData.baseBranch).toBe("main");
         expect(result.eventData.claudeBranch).toBe(
-          "claude/issue-42-20240101_120000",
+          "claude/issue-42-20240101-1200",
         );
       }
     });
@@ -184,7 +203,7 @@ describe("parseEnvVarsWithContext", () => {
         mockIssueAssignedContext,
         "12345",
         "main",
-        "claude/issue-123-20240101_120000",
+        "claude/issue-123-20240101-1200",
       );
 
       expect(result.eventData.eventName).toBe("issues");
@@ -197,7 +216,7 @@ describe("parseEnvVarsWithContext", () => {
         expect(result.eventData.issueNumber).toBe("123");
         expect(result.eventData.baseBranch).toBe("main");
         expect(result.eventData.claudeBranch).toBe(
-          "claude/issue-123-20240101_120000",
+          "claude/issue-123-20240101-1200",
         );
         expect(result.eventData.assigneeTrigger).toBe("@claude-bot");
       }
@@ -215,50 +234,78 @@ describe("parseEnvVarsWithContext", () => {
           mockIssueOpenedContext,
           "12345",
           undefined,
-          "claude/issue-42-20240101_120000",
+          "claude/issue-42-20240101-1200",
         ),
       ).toThrow("BASE_BRANCH is required for issues event");
     });
+
+    test("should allow issue assigned event with prompt and no assigneeTrigger", () => {
+      const contextWithDirectPrompt = createMockContext({
+        ...mockIssueAssignedContext,
+        inputs: {
+          ...mockIssueAssignedContext.inputs,
+          assigneeTrigger: "", // No assignee trigger
+          prompt: "Please assess this issue", // But prompt is provided
+        },
+      });
+
+      const result = prepareContext(
+        contextWithDirectPrompt,
+        "12345",
+        "main",
+        "claude/issue-123-20240101-1200",
+      );
+
+      expect(result.eventData.eventName).toBe("issues");
+      expect(result.eventData.isPR).toBe(false);
+      expect(result.prompt).toBe("Please assess this issue");
+      if (
+        result.eventData.eventName === "issues" &&
+        result.eventData.eventAction === "assigned"
+      ) {
+        expect(result.eventData.issueNumber).toBe("123");
+        expect(result.eventData.assigneeTrigger).toBeUndefined();
+      }
+    });
+
+    test("should throw error when neither assigneeTrigger nor prompt provided for issue assigned event", () => {
+      const contextWithoutTriggers = createMockContext({
+        ...mockIssueAssignedContext,
+        inputs: {
+          ...mockIssueAssignedContext.inputs,
+          assigneeTrigger: "", // No assignee trigger
+          prompt: "", // No prompt
+        },
+      });
+
+      expect(() =>
+        prepareContext(
+          contextWithoutTriggers,
+          "12345",
+          "main",
+          "claude/issue-123-20240101-1200",
+        ),
+      ).toThrow("ASSIGNEE_TRIGGER is required for issue assigned event");
+    });
   });
 
-  describe("optional fields", () => {
-    test("should include custom instructions when provided", () => {
+  describe("context generation", () => {
+    test("should generate context without legacy fields", () => {
       process.env = BASE_ENV;
-      const contextWithCustomInstructions = createMockContext({
+      const context = createMockContext({
         ...mockPullRequestCommentContext,
         inputs: {
           ...mockPullRequestCommentContext.inputs,
-          customInstructions: "Be concise",
         },
       });
-      const result = prepareContext(contextWithCustomInstructions, "12345");
+      const result = prepareContext(context, "12345");
 
-      expect(result.customInstructions).toBe("Be concise");
+      // Verify context is created without legacy fields
+      expect(result.repository).toBe("test-owner/test-repo");
+      expect(result.claudeCommentId).toBe("12345");
+      expect(result.triggerPhrase).toBe("/claude");
+      expect((result as any).customInstructions).toBeUndefined();
+      expect((result as any).allowedTools).toBeUndefined();
     });
-
-    test("should include allowed tools when provided", () => {
-      process.env = BASE_ENV;
-      const contextWithAllowedTools = createMockContext({
-        ...mockPullRequestCommentContext,
-        inputs: {
-          ...mockPullRequestCommentContext.inputs,
-          allowedTools: ["Tool1", "Tool2"],
-        },
-      });
-      const result = prepareContext(contextWithAllowedTools, "12345");
-
-      expect(result.allowedTools).toBe("Tool1,Tool2");
-    });
-  });
-
-  test("should throw error for unsupported event type", () => {
-    process.env = BASE_ENV;
-    const unsupportedContext = createMockContext({
-      eventName: "unsupported_event",
-      eventAction: "whatever",
-    });
-    expect(() => prepareContext(unsupportedContext, "12345")).toThrow(
-      "Unsupported event type: unsupported_event",
-    );
   });
 });

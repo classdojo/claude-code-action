@@ -7,119 +7,87 @@
 
 import * as core from "@actions/core";
 import { setupGitHubToken } from "../github/token";
-import { checkTriggerAction } from "../github/validation/trigger";
-import { checkHumanActor } from "../github/validation/actor";
 import { checkWritePermissions } from "../github/validation/permissions";
-import { setupBranch } from "../github/operations/branch";
-import { updateTrackingComment } from "../github/operations/comments/update-with-branch";
-import { OutputManager } from "../output-manager";
-import { prepareMcpConfig } from "../mcp/install-mcp-server";
-import { createPrompt } from "../create-prompt";
 import { createOctokit } from "../github/api/client";
-import { fetchGitHubData } from "../github/data/fetcher";
-import { parseGitHubContext } from "../github/context";
+import { parseGitHubContext, isEntityContext } from "../github/context";
+import { getMode } from "../modes/registry";
+import { prepare } from "../prepare";
+import { collectActionInputsPresence } from "./collect-inputs";
 
 async function run() {
   try {
-    // Step 1: Setup GitHub token
+    collectActionInputsPresence();
+
+    // Parse GitHub context first to enable mode detection
+    const context = parseGitHubContext();
+
+    // Auto-detect mode based on context
+    const mode = getMode(context);
+
+    // Setup GitHub token
     const githubToken = await setupGitHubToken();
     const octokit = createOctokit(githubToken);
 
-    // Step 2: Parse GitHub context (once for all operations)
-    const context = parseGitHubContext();
-
-    // Step 3: Check write permissions
-    const hasWritePermissions = await checkWritePermissions(
-      octokit.rest,
-      context,
-    );
-    if (!hasWritePermissions) {
-      throw new Error(
-        "Actor does not have write permissions to the repository",
+    // Step 3: Check write permissions (only for entity contexts)
+    if (isEntityContext(context)) {
+      // Check if github_token was provided as input (not from app)
+      const githubTokenProvided = !!process.env.OVERRIDE_GITHUB_TOKEN;
+      const hasWritePermissions = await checkWritePermissions(
+        octokit.rest,
+        context,
+        context.inputs.allowedNonWriteUsers,
+        githubTokenProvided,
       );
+      if (!hasWritePermissions) {
+        throw new Error(
+          "Actor does not have write permissions to the repository",
+        );
+      }
     }
 
-    // Step 4: Check trigger conditions
-    const containsTrigger = await checkTriggerAction(context);
+    // Check trigger conditions
+    const containsTrigger = mode.shouldTrigger(context);
+
+    // Debug logging
+    console.log(`Mode: ${mode.name}`);
+    console.log(`Context prompt: ${context.inputs?.prompt || "NO PROMPT"}`);
+    console.log(`Trigger result: ${containsTrigger}`);
+
+    // Set output for action.yml to check
+    core.setOutput("contains_trigger", containsTrigger.toString());
 
     if (!containsTrigger) {
       console.log("No trigger found, skipping remaining steps");
+      // Still set github_token output even when skipping
+      core.setOutput("github_token", githubToken);
       return;
     }
 
-    // Step 5: Check if actor is human
-    await checkHumanActor(octokit.rest, context);
-
-    // Step 6: Setup output manager and create initial tracking
-    const outputModes = OutputManager.parseOutputModes(
-      process.env.OUTPUT_MODE || "pr_comment",
-    );
-    const commitSha = process.env.COMMIT_SHA;
-    const outputManager = new OutputManager(
-      outputModes,
-      octokit.rest,
+    // Step 5: Use the new modular prepare function
+    const result = await prepare({
       context,
-      commitSha,
-    );
-    const outputIdentifiers = await outputManager.createInitial(context);
-
-    // Output the identifiers for downstream steps
-    core.setOutput(
-      "output_identifiers",
-      outputManager.serializeIdentifiers(outputIdentifiers),
-    );
-
-    // Legacy support: output the primary identifier as claude_comment_id
-    const primaryIdentifier =
-      outputManager.getPrimaryIdentifier(outputIdentifiers);
-    if (primaryIdentifier) {
-      core.setOutput("claude_comment_id", primaryIdentifier);
-    }
-
-    // Step 7: Fetch GitHub data (once for both branch setup and prompt creation)
-    const githubData = await fetchGitHubData({
-      octokits: octokit,
-      repository: `${context.repository.owner}/${context.repository.repo}`,
-      prNumber: context.entityNumber.toString(),
-      isPR: context.isPR,
-      triggerUsername: context.actor,
-    });
-
-    // Step 8: Setup branch
-    const branchInfo = await setupBranch(octokit, githubData, context);
-
-    // Step 9: Update initial comment with branch link (only for issues that created a new branch)
-    // Note: This only applies to pr_comment strategy, others don't support updates
-    if (branchInfo.claudeBranch && outputIdentifiers.pr_comment) {
-      await updateTrackingComment(
-        octokit,
-        context,
-        parseInt(outputIdentifiers.pr_comment),
-        branchInfo.claudeBranch,
-      );
-    }
-
-    // Step 10: Create prompt file
-    await createPrompt(
-      primaryIdentifier ? parseInt(primaryIdentifier) : 0,
-      branchInfo.baseBranch,
-      branchInfo.claudeBranch,
-      githubData,
-      context,
-    );
-
-    // Step 11: Get MCP configuration
-    const additionalMcpConfig = process.env.MCP_CONFIG || "";
-    const mcpConfig = await prepareMcpConfig({
+      octokit,
+      mode,
       githubToken,
-      owner: context.repository.owner,
-      repo: context.repository.repo,
-      branch: branchInfo.currentBranch,
-      additionalMcpConfig,
-      claudeCommentId: primaryIdentifier || "0",
-      allowedTools: context.inputs.allowedTools,
     });
-    core.setOutput("mcp_config", mcpConfig);
+
+    // MCP config is handled by individual modes (tag/agent) and included in their claude_args output
+
+    // Expose the GitHub token (Claude App token) as an output
+    core.setOutput("github_token", githubToken);
+
+    // Step 6: Get system prompt from mode if available
+    if (mode.getSystemPrompt) {
+      const modeContext = mode.prepareContext(context, {
+        commentId: result.commentId,
+        baseBranch: result.branchInfo.baseBranch,
+        claudeBranch: result.branchInfo.claudeBranch,
+      });
+      const systemPrompt = mode.getSystemPrompt(modeContext);
+      if (systemPrompt) {
+        core.exportVariable("APPEND_SYSTEM_PROMPT", systemPrompt);
+      }
+    }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     core.setFailed(`Prepare step failed with error: ${errorMessage}`);
