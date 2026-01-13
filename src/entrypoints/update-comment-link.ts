@@ -256,9 +256,10 @@ async function run() {
 
         // Prepare the review content
         const reviewContent: ReviewContent = {
+          summary: actionFailed ? "Action failed" : "Action completed",
           body: updatedBody,
           actionFailed,
-          executionDetails: executionDetails || undefined,
+          executionDetails: executionDetails || null,
           jobUrl,
           branchName: shouldDeleteBranch || !branchLink ? undefined : claudeBranch,
           prLink: prLink || undefined,
